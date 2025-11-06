@@ -581,9 +581,6 @@ Examples:
     process.exit(1);
   }
 
-  // If ignore is specified, also remove any explicitly matched files that
-  // might have slipped in via non-wildcard entries. We compute the ignored
-  // set once using fast-glob and filter entryPoints by relative posix path.
   if (config.ignore && config.ignore.length > 0) {
     const ignoredSet = new Set<string>();
     // Resolve each ignore pattern to file paths
