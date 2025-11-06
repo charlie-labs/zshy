@@ -22,8 +22,6 @@ interface RawConfig {
   conditions?: Record<string, "esm" | "cjs" | "src">;
   tsconfig?: string; // optional path to tsconfig.json file
   noEdit?: boolean;
-  // Array of glob patterns (relative to package root) to ignore when discovering
-  // wildcard entrypoints. Acts like tsconfig "exclude" for zshy builds.
   ignore?: string[];
 }
 
@@ -247,12 +245,20 @@ Examples:
       }
     }
 
-    // Validate ignore globs if present
     if (rawConfig.ignore !== undefined) {
       if (!Array.isArray(rawConfig.ignore) || rawConfig.ignore.some((g) => typeof g !== "string")) {
         emojiLog(
           "❌",
           `Invalid "ignore" key in package.json#/${CONFIG_KEY}, expected an array of glob strings`,
+          "error"
+        );
+        process.exit(1);
+      }
+      // Disallow negations, absolute paths, and parent-directory traversals
+      if (rawConfig.ignore.some((g) => g.startsWith("!") || path.isAbsolute(g) || /(^|[\\/])\.\.(?:[\\/]|$)/.test(g))) {
+        emojiLog(
+          "❌",
+          `Invalid "ignore" patterns in package.json#/${CONFIG_KEY}: negations ("!"), absolute paths, and ".." segments are not supported`,
           "error"
         );
         process.exit(1);
@@ -477,12 +483,7 @@ Examples:
         const wildcardFiles = await glob(pattern, {
           // Treat zshy.ignore like tsconfig "exclude". Apply on wildcard
           // discovery so these files never become tsc rootNames.
-          ignore: [
-            "**/*.d.ts",
-            "**/*.d.mts",
-            "**/*.d.cts",
-            ...(config.ignore ?? []),
-          ],
+          ignore: ["**/*.d.ts", "**/*.d.mts", "**/*.d.cts", ...(config.ignore ?? [])],
           cwd: pkgJsonDir,
         });
         entryPoints.push(...wildcardFiles);
@@ -553,7 +554,6 @@ Examples:
     );
     process.exit(1);
   }
-
 
   // If ignore is specified, also remove any explicitly matched files that
   // might have slipped in via non-wildcard entries. We compute the ignored

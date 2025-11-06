@@ -308,6 +308,33 @@ And the generated `"exports"` map will look like this:
 
 <br/>
 
+### Ignoring files during discovery (`zshy.ignore`)
+
+Exclude files and folders from wildcard entrypoint discovery with an `ignore` array in `package.json#/zshy`. These globs are resolved relative to your package root and behave like `tsconfig.json`'s `exclude`.
+
+```jsonc
+{
+  "zshy": {
+    "exports": {
+      "./plugins/*": "./src/plugins/*"
+    },
+    "ignore": [
+      "**/*.test.ts",
+      "**/__mocks__/**",
+      "src/legacy/**"
+    ]
+  }
+}
+```
+
+Notes:
+
+- The `ignore` patterns apply to wildcard discovery so unwanted files never become TypeScript root names. They are also applied to explicitly listed entrypoints as a safety filter.
+- For safety, negated patterns (`!pattern`), absolute paths, and `..` segments are rejected.
+- Globs follow `fast-glob` semantics.
+
+<br/>
+
 ### Building CLIs (`"bin"` support)
 
 If your package is a CLI, specify your CLI entrypoint in `package.json#/zshy/bin`. `zshy` will include this entrypoint in your builds and automatically set `"bin"` in your package.json.
