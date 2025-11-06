@@ -298,7 +298,19 @@ Examples:
     config.cjs = true; // Default to true if not specified
   }
   config.noEdit ??= false;
-  if (config.ignore && config.ignore.length === 0) config.ignore = undefined;
+
+  // Normalize ignore patterns: trim, drop empties, POSIX-ify, and de-duplicate
+  if (Array.isArray(config.ignore)) {
+    const normalized = Array.from(
+      new Set(
+        config.ignore
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0)
+          .map(toPosix)
+      )
+    );
+    config.ignore = normalized.length > 0 ? normalized : undefined;
+  }
 
   // Validate that if cjs is disabled, no conditions are set to "cjs"
   if (config.cjs === false && config.conditions) {
