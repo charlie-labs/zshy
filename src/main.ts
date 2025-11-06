@@ -255,7 +255,12 @@ Examples:
         process.exit(1);
       }
       // Disallow negations, absolute paths, and parent-directory traversals
-      if (rawConfig.ignore.some((g) => g.startsWith("!") || path.isAbsolute(g) || /(^|[\\/])\.\.(?:[\\/]|$)/.test(g))) {
+      if (
+        rawConfig.ignore.some((g) => {
+          const t = g.trim();
+          return t.startsWith("!") || path.isAbsolute(t) || /(^|[\\/])\.\.(?:[\\/]|$)/.test(t);
+        })
+      ) {
         emojiLog(
           "❌",
           `Invalid "ignore" patterns in package.json#/${CONFIG_KEY}: negations ("!"), absolute paths, and ".." segments are not supported`,
