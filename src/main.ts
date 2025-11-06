@@ -298,7 +298,6 @@ Examples:
     config.cjs = true; // Default to true if not specified
   }
   config.noEdit ??= false;
-  // Normalize ignore to an array (or undefined)
   if (config.ignore && config.ignore.length === 0) config.ignore = undefined;
 
   // Validate that if cjs is disabled, no conditions are set to "cjs"
