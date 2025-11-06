@@ -246,34 +246,34 @@ Examples:
     }
 
     if (rawConfig.ignore !== undefined) {
-      if (!Array.isArray(rawConfig.ignore) || rawConfig.ignore.some((g) => typeof g !== "string")) {
-        emojiLog(
-          "❌",
-          `Invalid "ignore" key in package.json#/${CONFIG_KEY}, expected an array of glob strings`,
-          "error"
-        );
-        process.exit(1);
-      }
-      // Disallow negations, absolute paths, and parent-directory traversals
-      if (
-        rawConfig.ignore.some((g) => {
+      const invalidPatterns: string[] = [];
+
+      if (!Array.isArray(rawConfig.ignore)) {
+        invalidPatterns.push(String(rawConfig.ignore));
+      } else {
+        for (const g of rawConfig.ignore) {
+          if (typeof g !== "string") {
+            invalidPatterns.push(String(g));
+            continue;
+          }
+
           const t = g.trim();
-          return t.startsWith("!") || path.isAbsolute(t) || /(^|[\\/])\.\.(?:[\\/]|$)/.test(t);
-        })
-      ) {
-        emojiLog(
-          "❌",
-          `Invalid "ignore" patterns in package.json#/${CONFIG_KEY}: negations ("!"), absolute paths, and ".." segments are not supported`,
-          "error"
-        );
-        process.exit(1);
+
+          if (
+            t.length === 0 ||
+            t.startsWith("!") ||
+            path.isAbsolute(t) ||
+            /(^|[\\/])\.\.(?:[\\/]|$)/.test(t)
+          ) {
+            invalidPatterns.push(g);
+          }
+        }
       }
 
-      // Disallow empty/whitespace-only patterns
-      if (rawConfig.ignore.some((g) => g.trim().length === 0)) {
+      if (invalidPatterns.length > 0) {
         emojiLog(
           "❌",
-          `Invalid "ignore" patterns in package.json#/${CONFIG_KEY}: empty patterns are not allowed`,
+          `Invalid "ignore" patterns in package.json#/${CONFIG_KEY}: patterns must be non-empty relative globs without negations ("!"), absolute paths, or ".." segments. Invalid: ${invalidPatterns.join(", ")}`,
           "error"
         );
         process.exit(1);
