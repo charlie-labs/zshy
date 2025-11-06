@@ -204,7 +204,6 @@ describe("zshy with different tsconfig configurations", () => {
       const snapshot = runZshyWithTsconfig("tsconfig.json", { dryRun: false, cwd });
       expect(snapshot).toMatchSnapshot();
     } finally {
-      // Restore the original package.json regardless of test outcome.
       writeFileSync(packageJsonPath, originalPackageJson, "utf8");
     }
   });
@@ -225,7 +224,6 @@ describe("zshy with different tsconfig configurations", () => {
       const snapshot = runZshyWithTsconfig("tsconfig.json", { dryRun: false, cwd });
       expect(snapshot).toMatchSnapshot();
     } finally {
-      // Restore the original package.json regardless of test outcome.
       writeFileSync(packageJsonPath, originalPackageJson, "utf8");
     }
   });
