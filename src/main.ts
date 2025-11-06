@@ -582,14 +582,12 @@ Examples:
 
   if (config.ignore && config.ignore.length > 0) {
     const ignoredSet = new Set<string>();
-    // Resolve each ignore pattern to file paths
     for (const patt of config.ignore) {
       const matches = await glob(patt, { cwd: pkgJsonDir });
       for (const m of matches) ignoredSet.add(toPosix(m));
     }
 
     const before = entryPoints.length;
-    // Filter entryPoints if they are in the ignored set
     const filtered = entryPoints.filter((ep) => {
       const rel = toPosix(path.relative(pkgJsonDir, path.resolve(pkgJsonDir, ep)));
       return !ignoredSet.has(rel);
