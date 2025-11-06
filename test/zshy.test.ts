@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 describe("zshy with different tsconfig configurations", () => {
@@ -64,7 +66,8 @@ describe("zshy with different tsconfig configurations", () => {
 
     try {
       // Run zshy using tsx with --project flag in verbose mode and dry-run from test directory
-      const args = ["../../src/index.ts", "--project", `./${tsconfigFile}`, "--verbose"];
+      const absEntrypoint = join(process.cwd(), "src", "index.ts");
+      const args = [absEntrypoint, "--project", `./${tsconfigFile}`, "--verbose"];
       if (opts.dryRun) {
         args.push("--dry-run");
       }
@@ -188,6 +191,49 @@ describe("zshy with different tsconfig configurations", () => {
     });
     expect(snapshot).toMatchSnapshot();
   });
+
+  it("should respect zshy.ignore globs for wildcard entrypoints", () => {
+    const cwd = join(process.cwd(), "test", "basic");
+    const packageJsonPath = join(cwd, "package.json");
+    const originalPackageJson = readFileSync(packageJsonPath, "utf8");
+
+    try {
+      const pkg = JSON.parse(originalPackageJson);
+      pkg.zshy = pkg.zshy || {};
+      // Ignore a specific file, a directory, and a glob pattern.
+      // These correspond to fixture files under test/basic/src/plugins.
+      pkg.zshy.ignore = ["src/plugins/b.cts", "src/plugins/d/**", "src/plugins/*.mts"];
+      writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + "\n", "utf8");
+
+      const snapshot = runZshyWithTsconfig("tsconfig.json", { dryRun: false, cwd });
+      expect(snapshot).toMatchSnapshot();
+    } finally {
+      // Restore the original package.json regardless of test outcome.
+      writeFileSync(packageJsonPath, originalPackageJson, "utf8");
+    }
+  });
+
+  it("should allow ignoring explicit (non-wildcard) entrypoints", () => {
+    const cwd = join(process.cwd(), "test", "basic");
+    const packageJsonPath = join(cwd, "package.json");
+    const originalPackageJson = readFileSync(packageJsonPath, "utf8");
+
+    try {
+      const pkg = JSON.parse(originalPackageJson);
+      pkg.zshy = pkg.zshy || {};
+      pkg.zshy.ignore = [
+        // This file is an explicit export in the fixture
+        "src/hello.ts",
+      ];
+      writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + "\n", "utf8");
+
+      const snapshot = runZshyWithTsconfig("tsconfig.json", { dryRun: false, cwd });
+      expect(snapshot).toMatchSnapshot();
+    } finally {
+      // Restore the original package.json regardless of test outcome.
+      writeFileSync(packageJsonPath, originalPackageJson, "utf8");
+    }
+  });
 });
 
 function normalizeOutput(output: string): string {
@@ -198,6 +244,8 @@ function normalizeOutput(output: string): string {
       // escaped backslashes since we `JSON.stringify` some paths in the output.
       .replaceAll(slashPattern, "/")
       .replaceAll(process.cwd().replaceAll(slashPattern, "/"), "<root>")
+      // Normalize OS temp directory paths used by temporary fixtures
+      .replaceAll(os.tmpdir().replaceAll(slashPattern, "/"), "<tmp>")
       // Normalize timestamps and timing info
       .replace(/\d+ms/g, "<time>")
       // Normalize any specific file counts that might vary
