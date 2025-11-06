@@ -566,7 +566,7 @@ Examples:
     const ignoredSet = new Set<string>();
     // Resolve each ignore pattern to file paths
     for (const patt of config.ignore) {
-      const matches = await glob(patt, { cwd: pkgJsonDir, dot: true });
+      const matches = await glob(patt, { cwd: pkgJsonDir });
       for (const m of matches) ignoredSet.add(toPosix(m));
     }
 
