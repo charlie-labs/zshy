@@ -484,7 +484,6 @@ Examples:
             ...(config.ignore ?? []),
           ],
           cwd: pkgJsonDir,
-          dot: true,
         });
         entryPoints.push(...wildcardFiles);
 
