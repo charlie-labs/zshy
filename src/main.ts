@@ -268,6 +268,16 @@ Examples:
         );
         process.exit(1);
       }
+
+      // Disallow empty/whitespace-only patterns
+      if (rawConfig.ignore.some((g) => g.trim().length === 0)) {
+        emojiLog(
+          "❌",
+          `Invalid "ignore" patterns in package.json#/${CONFIG_KEY}: empty patterns are not allowed`,
+          "error"
+        );
+        process.exit(1);
+      }
     }
   } else if (typeof pkgJson[CONFIG_KEY] === "undefined") {
     emojiLog("❌", `Missing "${CONFIG_KEY}" key in package.json`, "error");
