@@ -309,7 +309,6 @@ Examples:
   }
   config.noEdit ??= false;
 
-  // Normalize ignore patterns: trim, drop empties, POSIX-ify, and de-duplicate
   if (Array.isArray(config.ignore)) {
     const normalized = Array.from(
       new Set(
