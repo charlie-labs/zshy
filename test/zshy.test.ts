@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -66,8 +65,7 @@ describe("zshy with different tsconfig configurations", () => {
 
     try {
       // Run zshy using tsx with --project flag in verbose mode and dry-run from test directory
-      const absEntrypoint = join(process.cwd(), "src", "index.ts");
-      const args = [absEntrypoint, "--project", `./${tsconfigFile}`, "--verbose"];
+      const args = ["../../src/index.ts", "--project", `./${tsconfigFile}`, "--verbose"];
       if (opts.dryRun) {
         args.push("--dry-run");
       }
@@ -244,8 +242,6 @@ function normalizeOutput(output: string): string {
       // escaped backslashes since we `JSON.stringify` some paths in the output.
       .replaceAll(slashPattern, "/")
       .replaceAll(process.cwd().replaceAll(slashPattern, "/"), "<root>")
-      // Normalize OS temp directory paths used by temporary fixtures
-      .replaceAll(os.tmpdir().replaceAll(slashPattern, "/"), "<tmp>")
       // Normalize timestamps and timing info
       .replace(/\d+ms/g, "<time>")
       // Normalize any specific file counts that might vary
