@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -225,6 +225,226 @@ describe("zshy with different tsconfig configurations", () => {
       expect(snapshot).toMatchSnapshot();
     } finally {
       writeFileSync(packageJsonPath, originalPackageJson, "utf8");
+    }
+  });
+
+  it("should resolve tsconfig extends from node_modules package export", () => {
+    const cwd = join(process.cwd(), "test", "basic");
+    const tsconfigPath = join(cwd, "tsconfig.json");
+    const originalTsconfig = readFileSync(tsconfigPath, "utf8");
+
+    const pkgName = "tsconfig-for-zshy-test";
+    const tsconfigPackageDir = join(cwd, "node_modules", pkgName);
+
+    try {
+      mkdirSync(tsconfigPackageDir, { recursive: true });
+
+      writeFileSync(
+        join(tsconfigPackageDir, "package.json"),
+        JSON.stringify(
+          {
+            name: pkgName,
+            version: "1.0.0",
+            exports: {
+              "./bun.json": "./bun.json",
+            },
+          },
+          null,
+          2
+        ) + "\n",
+        "utf8"
+      );
+
+      writeFileSync(
+        join(tsconfigPackageDir, "bun.json"),
+        JSON.stringify(
+          {
+            compilerOptions: {
+              lib: ["ESNext"],
+              target: "ES2020",
+              module: "ESNext",
+              moduleResolution: "Bundler",
+              moduleDetection: "auto",
+              allowJs: true,
+              jsx: "react-jsx",
+              allowImportingTsExtensions: true,
+              rewriteRelativeImportExtensions: true,
+              verbatimModuleSyntax: false,
+              noEmit: false,
+              strict: true,
+              skipLibCheck: true,
+              noFallthroughCasesInSwitch: true,
+              noUncheckedIndexedAccess: true,
+              esModuleInterop: true,
+              forceConsistentCasingInFileNames: true,
+              noUnusedLocals: true,
+              noUnusedParameters: false,
+              noPropertyAccessFromIndexSignature: false,
+              sourceMap: true,
+              declarationMap: true,
+              resolveJsonModule: true,
+              noImplicitOverride: true,
+              noImplicitThis: true,
+            },
+          },
+          null,
+          2
+        ) + "\n",
+        "utf8"
+      );
+
+      writeFileSync(
+        tsconfigPath,
+        JSON.stringify(
+          {
+            extends: `${pkgName}/bun.json`,
+            compilerOptions: {
+              outDir: "./dist",
+            },
+          },
+          null,
+          2
+        ) + "\n",
+        "utf8"
+      );
+
+      const snapshot = runZshyWithTsconfig("tsconfig.json", { dryRun: false, cwd });
+      expect(snapshot).toMatchSnapshot();
+    } finally {
+      writeFileSync(tsconfigPath, originalTsconfig, "utf8");
+
+      if (existsSync(tsconfigPackageDir)) {
+        rmSync(tsconfigPackageDir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("should find tsconfig.json via zshy.findTsconfig up to the git root", () => {
+    const cwd = process.cwd();
+    const parent = join(cwd, "tmp-find-tsconfig-parent");
+    const fixtureRoot = join(parent, "pkg");
+    const srcDir = join(fixtureRoot, "src");
+    const entryPath = join(srcDir, "index.ts");
+    const packageJsonPath = join(fixtureRoot, "package.json");
+    const parentGitDir = join(parent, ".git");
+    const parentTsconfigPath = join(parent, "tsconfig.json");
+
+    try {
+      // Create an isolated parent that mimics a repo root with its own .git and tsconfig.json
+      mkdirSync(parentGitDir, { recursive: true });
+      writeFileSync(
+        parentTsconfigPath,
+        JSON.stringify({ compilerOptions: { module: "ESNext", target: "ES2020", outDir: "./dist" } }, null, 2) +
+          "\n",
+        "utf8"
+      );
+
+      // Create a nested package that opts into findTsconfig discovery but has no local tsconfig.json
+      mkdirSync(srcDir, { recursive: true });
+      writeFileSync(entryPath, "export const value = 42;\n", "utf8");
+
+      const pkg = {
+        name: "tmp-find-tsconfig",
+        version: "1.0.0",
+        type: "module",
+        zshy: {
+          exports: {
+            ".": "./src/index.ts",
+          },
+          findTsconfig: true,
+        },
+        files: ["dist"],
+      };
+
+      writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + "\n", "utf8");
+
+      const result = spawnSync(
+        "tsx",
+        ["../../src/index.ts", "--verbose", "--dry-run"],
+        {
+          shell: true,
+          encoding: "utf8",
+          timeout: 30000,
+          cwd: fixtureRoot,
+          env: {
+            ...process.env,
+            LC_ALL: "C.UTF-8",
+            LANG: "C.UTF-8",
+          },
+        }
+      );
+
+      const combinedOutput = [result.stdout || "", result.stderr || ""].filter(Boolean).join("\n");
+      const normalized = normalizeOutput(combinedOutput);
+
+      expect(result.status).toBe(0);
+      // When findTsconfig is enabled, we should be reading the parent tsconfig.json relative to the package root
+      expect(normalized).toContain("Reading tsconfig from ./../tsconfig.json");
+    } finally {
+      if (existsSync(parent)) {
+        rmSync(parent, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it("should stop searching when encountering a gitfile as repo root", () => {
+    const cwd = process.cwd();
+    const parent = join(cwd, "tmp-find-tsconfig-gitfile-parent");
+    const fixtureRoot = join(parent, "pkg");
+    const srcDir = join(fixtureRoot, "src");
+    const entryPath = join(srcDir, "index.ts");
+    const packageJsonPath = join(fixtureRoot, "package.json");
+    const gitFilePath = join(parent, ".git");
+
+    try {
+      mkdirSync(parent, { recursive: true });
+      // Simulate a gitfile pointing elsewhere; presence alone should mark this as a root
+      writeFileSync(gitFilePath, "gitdir: ../.git-worktree\n", "utf8");
+
+      mkdirSync(srcDir, { recursive: true });
+      writeFileSync(entryPath, "export const value = 99;\n", "utf8");
+
+      const pkg = {
+        name: "tmp-find-tsconfig-gitfile",
+        version: "1.0.0",
+        type: "module",
+        zshy: {
+          exports: {
+            ".": "./src/index.ts",
+          },
+          findTsconfig: true,
+        },
+        files: ["dist"],
+      };
+
+      writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + "\n", "utf8");
+
+      const result = spawnSync(
+        "tsx",
+        ["../../src/index.ts", "--verbose", "--dry-run"],
+        {
+          shell: true,
+          encoding: "utf8",
+          timeout: 30000,
+          cwd: fixtureRoot,
+          env: {
+            ...process.env,
+            LC_ALL: "C.UTF-8",
+            LANG: "C.UTF-8",
+          },
+        }
+      );
+
+      const combinedOutput = [result.stdout || "", result.stderr || ""].filter(Boolean).join("\n");
+      const normalized = normalizeOutput(combinedOutput);
+
+      // Since there's no tsconfig.json below the gitfile root, this should fail
+      expect(result.status).not.toBe(0);
+      expect(normalized).toContain("tsconfig.json not found when searching from");
+    } finally {
+      if (existsSync(parent)) {
+        rmSync(parent, { recursive: true, force: true });
+      }
     }
   });
 });

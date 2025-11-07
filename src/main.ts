@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import parseArgs from "arg";
 import glob from "fast-glob";
+import { findUp, findUpStop } from "find-up";
 import { table } from "table";
 import * as ts from "typescript";
 import { type BuildContext, compileProject } from "./compile.js";
@@ -21,6 +22,7 @@ interface RawConfig {
   cjs?: boolean | null;
   conditions?: Record<string, "esm" | "cjs" | "src">;
   tsconfig?: string; // optional path to tsconfig.json file
+  findTsconfig?: boolean; // opt-in tsconfig discovery using find-up
   noEdit?: boolean;
   ignore?: string[];
 }
@@ -30,7 +32,8 @@ interface NormalizedConfig {
   bin: Record<string, string> | string | null;
   conditions: Record<string, "esm" | "cjs" | "src">;
   cjs: boolean;
-  tsconfig: string;
+  tsconfig?: string;
+  findTsconfig: boolean;
   noEdit: boolean;
   ignore?: string[];
 }
@@ -308,6 +311,7 @@ Examples:
     config.cjs = true; // Default to true if not specified
   }
   config.noEdit ??= false;
+  config.findTsconfig = !!config.findTsconfig;
 
   if (Array.isArray(config.ignore)) {
     const normalized = Array.from(
@@ -350,7 +354,8 @@ Examples:
   ///////////////////////////
 
   // Determine tsconfig.json path
-  let tsconfigPath: string;
+  let tsconfigPath: string | undefined;
+
   if (args["--project"]) {
     // CLI flag takes priority
     const resolvedProjectPath = path.resolve(process.cwd(), args["--project"]);
@@ -363,16 +368,14 @@ Examples:
           "error"
         );
         process.exit(1);
-      } else {
-        // Use the file directly
-        tsconfigPath = resolvedProjectPath;
       }
+      tsconfigPath = resolvedProjectPath;
     } else {
       emojiLog("❌", `tsconfig.json file not found: ${resolvedProjectPath}`, "error");
       process.exit(1);
     }
   } else if (config.tsconfig) {
-    // Fallback to package.json config
+    // Fallback to explicit zshy.tsconfig path (relative to package root)
     const resolvedProjectPath = path.resolve(pkgJsonDir, config.tsconfig);
 
     if (fs.existsSync(resolvedProjectPath)) {
@@ -383,12 +386,51 @@ Examples:
           "error"
         );
         process.exit(1);
-      } else {
-        // Use the file directly
-        tsconfigPath = resolvedProjectPath;
       }
+      tsconfigPath = resolvedProjectPath;
     } else {
       emojiLog("❌", `Tsconfig file not found: ${resolvedProjectPath}`, "error");
+      process.exit(1);
+    }
+  } else if (config.findTsconfig) {
+    // Discover tsconfig.json by walking up from the package root until we hit a git root
+    const foundTsconfigPath = await findUp(
+      async (directory) => {
+        const candidate = path.join(directory, "tsconfig.json");
+
+        try {
+          const stat = await fs.promises.stat(candidate);
+          if (stat.isFile()) {
+            return candidate;
+          }
+        } catch {
+          // Candidate does not exist in this directory
+        }
+
+        const gitDir = path.join(directory, ".git");
+        try {
+          const gitStat = await fs.promises.stat(gitDir);
+          // Treat both `.git` directories and gitfiles as repository roots
+          if (gitStat.isDirectory() || gitStat.isFile()) {
+            return findUpStop;
+          }
+        } catch {
+          // No .git marker here; keep searching upwards
+        }
+
+        return undefined;
+      },
+      { cwd: pkgJsonDir }
+    );
+
+    if (foundTsconfigPath) {
+      tsconfigPath = foundTsconfigPath;
+    } else {
+      emojiLog(
+        "❌",
+        `tsconfig.json not found when searching from ${pkgJsonDir} up to the git repository root`,
+        "error"
+      );
       process.exit(1);
     }
   } else {
@@ -396,13 +438,14 @@ Examples:
     tsconfigPath = path.join(pkgJsonDir, "tsconfig.json");
   }
 
-  const _parsedConfig = readTsconfig(tsconfigPath);
-  if (!fs.existsSync(tsconfigPath)) {
-    // Check if tsconfig.json exists
-    emojiLog("❌", `tsconfig.json not found at ${toPosix(path.resolve(tsconfigPath))}`, "error");
+  if (!tsconfigPath || !fs.existsSync(tsconfigPath)) {
+    const targetPath = tsconfigPath ?? path.join(pkgJsonDir, "tsconfig.json");
+    emojiLog("❌", `tsconfig.json not found at ${toPosix(path.resolve(targetPath))}`, "error");
     process.exit(1);
   }
+
   emojiLog("📁", `Reading tsconfig from ./${relativePosix(pkgJsonDir, tsconfigPath)}`);
+  const _parsedConfig = readTsconfig(tsconfigPath);
 
   // if (_parsedConfig.rootDir) {
   // 	console.error(
