@@ -1,0 +1,68 @@
+import * as path from "node:path";
+import * as ts from "typescript";
+export function formatForLog(data) {
+    return JSON.stringify(data, null, 2).split("\n").join("\n   ");
+}
+export function emojiLog(_emoji, content, level = "log") {
+    console[level]("»  " + content);
+}
+export function isSourceFile(filePath) {
+    // Declaration files are not source files
+    if (filePath.endsWith(".d.ts") || filePath.endsWith(".d.mts") || filePath.endsWith(".d.cts")) {
+        return false;
+    }
+    // TypeScript source files
+    return (filePath.endsWith(".ts") || filePath.endsWith(".mts") || filePath.endsWith(".cts") || filePath.endsWith(".tsx"));
+}
+export function removeExtension(filePath) {
+    return filePath.split(".").slice(0, -1).join(".") || filePath;
+}
+export function readTsconfig(tsconfigPath) {
+    // Read and parse tsconfig.json
+    const configPath = path.resolve(tsconfigPath);
+    const configDir = path.dirname(configPath);
+    const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
+    if (configFile.error) {
+        console.error("Error reading tsconfig.json:", ts.formatDiagnostic(configFile.error, {
+            getCurrentDirectory: () => configDir,
+            getCanonicalFileName: (fileName) => fileName,
+            getNewLine: () => ts.sys.newLine,
+        }));
+        process.exit(1);
+    }
+    // Parse the config with explicit base path
+    const parsedConfig = ts.parseJsonConfigFileContent(configFile.config, {
+        ...ts.sys,
+        // Override getCurrentDirectory to use the tsconfig directory
+        getCurrentDirectory: () => configDir,
+    }, configDir);
+    if (parsedConfig.errors.length > 0) {
+        emojiLog("❌", "Error parsing tsconfig.json:", "error");
+        for (const error of parsedConfig.errors) {
+            console.error(ts.formatDiagnostic(error, {
+                getCurrentDirectory: () => configDir,
+                getCanonicalFileName: (fileName) => fileName,
+                getNewLine: () => ts.sys.newLine,
+            }));
+        }
+        process.exit(1);
+    }
+    if (!parsedConfig.options) {
+        emojiLog("❌", "Error reading tsconfig.json#/compilerOptions", "error");
+        process.exit(1);
+    }
+    return parsedConfig.options;
+}
+export const jsExtensions = new Set([".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".tsx"]);
+export function isAssetFile(filePath) {
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === "")
+        return false;
+    return !jsExtensions.has(ext);
+}
+export const toPosix = (p) => p.replaceAll(path.sep, path.posix.sep);
+export const relativePosix = (from, to) => {
+    const relativePath = path.relative(from, to);
+    return toPosix(relativePath);
+};
+//# sourceMappingURL=utils.js.map
