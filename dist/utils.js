@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { createRequire } from "node:module";
 import * as ts from "typescript";
 export function formatForLog(data) {
     return JSON.stringify(data, null, 2).split("\n").join("\n   ");
@@ -30,6 +31,10 @@ export function readTsconfig(tsconfigPath) {
         }));
         process.exit(1);
     }
+    // Normalize "extends" entries that reference node_modules packages so older
+    // TypeScript versions (or environments without JSON export support) can
+    // resolve configs like "tsconfig/bun.json" via Node's module resolution.
+    normalizeExtends(configFile.config, configDir);
     // Parse the config with explicit base path
     const parsedConfig = ts.parseJsonConfigFileContent(configFile.config, {
         ...ts.sys,
@@ -52,6 +57,69 @@ export function readTsconfig(tsconfigPath) {
         process.exit(1);
     }
     return parsedConfig.options;
+}
+function normalizeExtends(config, configDir) {
+    if (!config)
+        return;
+    const value = config.extends;
+    if (value === undefined)
+        return;
+    if (typeof value === "string") {
+        const resolved = resolveExtendsSpecifier(value, configDir);
+        if (resolved) {
+            config.extends = resolved;
+        }
+    }
+    else if (Array.isArray(value)) {
+        const updated = [];
+        let changed = false;
+        for (const entry of value) {
+            if (typeof entry === "string") {
+                const resolved = resolveExtendsSpecifier(entry, configDir);
+                if (resolved) {
+                    updated.push(resolved);
+                    changed = true;
+                }
+                else {
+                    updated.push(entry);
+                }
+            }
+            else {
+                updated.push(entry);
+            }
+        }
+        if (changed) {
+            config.extends = updated;
+        }
+    }
+}
+function resolveExtendsSpecifier(specifier, configDir) {
+    // Only rewrite bare module specifiers (and subpaths); relative and absolute
+    // paths are left untouched for TypeScript to handle.
+    // NOTE: This focuses on explicit subpaths like "pkg/tsconfig.json". It does
+    // not implement full package "exports" resolution for bare specifiers.
+    if (specifier.startsWith("./") || specifier.startsWith("../") || path.isAbsolute(specifier)) {
+        return undefined;
+    }
+    try {
+        const nodeRequire = createRequire(path.join(configDir, "tsconfig.json"));
+        const candidates = [specifier];
+        if (!specifier.endsWith(".json") && !specifier.endsWith(".jsonc")) {
+            candidates.push(`${specifier}.json`, `${specifier}.jsonc`);
+        }
+        for (const candidate of candidates) {
+            try {
+                return nodeRequire.resolve(candidate);
+            }
+            catch {
+                // Try next candidate
+            }
+        }
+    }
+    catch {
+        // Ignore resolution failures and fall back to TypeScript's behavior
+    }
+    return undefined;
 }
 export const jsExtensions = new Set([".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".tsx"]);
 export function isAssetFile(filePath) {
