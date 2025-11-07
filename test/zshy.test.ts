@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 describe("zshy with different tsconfig configurations", () => {
@@ -187,6 +188,44 @@ describe("zshy with different tsconfig configurations", () => {
       cwd: process.cwd() + "/test/tsconfig-paths",
     });
     expect(snapshot).toMatchSnapshot();
+  });
+
+  it("should respect zshy.ignore globs for wildcard entrypoints", () => {
+    const cwd = join(process.cwd(), "test", "basic");
+    const packageJsonPath = join(cwd, "package.json");
+    const originalPackageJson = readFileSync(packageJsonPath, "utf8");
+
+    try {
+      const pkg = JSON.parse(originalPackageJson);
+      pkg.zshy = pkg.zshy || {};
+      pkg.zshy.ignore = ["src/plugins/b.cts", "src/plugins/d/**", "src/plugins/*.mts"];
+      writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + "\n", "utf8");
+
+      const snapshot = runZshyWithTsconfig("tsconfig.json", { dryRun: false, cwd });
+      expect(snapshot).toMatchSnapshot();
+    } finally {
+      writeFileSync(packageJsonPath, originalPackageJson, "utf8");
+    }
+  });
+
+  it("should allow ignoring explicit (non-wildcard) entrypoints", () => {
+    const cwd = join(process.cwd(), "test", "basic");
+    const packageJsonPath = join(cwd, "package.json");
+    const originalPackageJson = readFileSync(packageJsonPath, "utf8");
+
+    try {
+      const pkg = JSON.parse(originalPackageJson);
+      pkg.zshy = pkg.zshy || {};
+      pkg.zshy.ignore = [
+        "src/hello.ts",
+      ];
+      writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + "\n", "utf8");
+
+      const snapshot = runZshyWithTsconfig("tsconfig.json", { dryRun: false, cwd });
+      expect(snapshot).toMatchSnapshot();
+    } finally {
+      writeFileSync(packageJsonPath, originalPackageJson, "utf8");
+    }
   });
 });
 

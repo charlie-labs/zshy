@@ -22,6 +22,7 @@ interface RawConfig {
   conditions?: Record<string, "esm" | "cjs" | "src">;
   tsconfig?: string; // optional path to tsconfig.json file
   noEdit?: boolean;
+  ignore?: string[];
 }
 
 interface NormalizedConfig {
@@ -31,6 +32,7 @@ interface NormalizedConfig {
   cjs: boolean;
   tsconfig: string;
   noEdit: boolean;
+  ignore?: string[];
 }
 export async function main(): Promise<void> {
   ///////////////////////////////////
@@ -242,6 +244,41 @@ Examples:
         process.exit(1);
       }
     }
+
+    if (rawConfig.ignore !== undefined) {
+      const invalidPatterns: string[] = [];
+
+      if (!Array.isArray(rawConfig.ignore)) {
+        invalidPatterns.push(String(rawConfig.ignore));
+      } else {
+        for (const g of rawConfig.ignore) {
+          if (typeof g !== "string") {
+            invalidPatterns.push(String(g));
+            continue;
+          }
+
+          const t = g.trim();
+
+          if (
+            t.length === 0 ||
+            t.startsWith("!") ||
+            path.isAbsolute(t) ||
+            /(^|[\\/])\.\.(?:[\\/]|$)/.test(t)
+          ) {
+            invalidPatterns.push(g);
+          }
+        }
+      }
+
+      if (invalidPatterns.length > 0) {
+        emojiLog(
+          "❌",
+          `Invalid "ignore" patterns in package.json#/${CONFIG_KEY}: patterns must be non-empty relative globs without negations ("!"), absolute paths, or ".." segments. Invalid: ${invalidPatterns.join(", ")}`,
+          "error"
+        );
+        process.exit(1);
+      }
+    }
   } else if (typeof pkgJson[CONFIG_KEY] === "undefined") {
     emojiLog("❌", `Missing "${CONFIG_KEY}" key in package.json`, "error");
     process.exit(1);
@@ -271,6 +308,18 @@ Examples:
     config.cjs = true; // Default to true if not specified
   }
   config.noEdit ??= false;
+
+  if (Array.isArray(config.ignore)) {
+    const normalized = Array.from(
+      new Set(
+        config.ignore
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0)
+          .map(toPosix)
+      )
+    );
+    config.ignore = normalized.length > 0 ? normalized : undefined;
+  }
 
   // Validate that if cjs is disabled, no conditions are set to "cjs"
   if (config.cjs === false && config.conditions) {
@@ -457,7 +506,9 @@ Examples:
           emojiLog("🔍", `Matching glob: ${pattern}`);
         }
         const wildcardFiles = await glob(pattern, {
-          ignore: ["**/*.d.ts", "**/*.d.mts", "**/*.d.cts"],
+          // Treat zshy.ignore like tsconfig "exclude". Apply on wildcard
+          // discovery so these files never become tsc rootNames.
+          ignore: ["**/*.d.ts", "**/*.d.mts", "**/*.d.cts", ...(config.ignore ?? [])],
           cwd: pkgJsonDir,
         });
         entryPoints.push(...wildcardFiles);
@@ -527,6 +578,26 @@ Examples:
       "error"
     );
     process.exit(1);
+  }
+
+  if (config.ignore && config.ignore.length > 0) {
+    const ignoredSet = new Set<string>();
+    for (const patt of config.ignore) {
+      const matches = await glob(patt, { cwd: pkgJsonDir });
+      for (const m of matches) ignoredSet.add(toPosix(m));
+    }
+
+    const before = entryPoints.length;
+    const filtered = entryPoints.filter((ep) => {
+      const rel = toPosix(path.relative(pkgJsonDir, path.resolve(pkgJsonDir, ep)));
+      return !ignoredSet.has(rel);
+    });
+    if (filtered.length !== before) {
+      const removed = before - filtered.length;
+      emojiLog("⚠️", `Ignoring ${removed} file${removed === 1 ? "" : "s"} via zshy.ignore`);
+    }
+    entryPoints.length = 0;
+    entryPoints.push(...filtered);
   }
 
   ///////////////////////////////
