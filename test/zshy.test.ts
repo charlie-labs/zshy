@@ -228,6 +228,97 @@ describe("zshy with different tsconfig configurations", () => {
     }
   });
 
+  it("should resolve tsconfig extends from node_modules package export", () => {
+    const cwd = join(process.cwd(), "test", "basic");
+    const tsconfigPath = join(cwd, "tsconfig.json");
+    const originalTsconfig = readFileSync(tsconfigPath, "utf8");
+
+    const pkgName = "tsconfig-for-zshy-test";
+    const tsconfigPackageDir = join(cwd, "node_modules", pkgName);
+
+    try {
+      mkdirSync(tsconfigPackageDir, { recursive: true });
+
+      writeFileSync(
+        join(tsconfigPackageDir, "package.json"),
+        JSON.stringify(
+          {
+            name: pkgName,
+            version: "1.0.0",
+            exports: {
+              "./bun.json": "./bun.json",
+            },
+          },
+          null,
+          2
+        ) + "\n",
+        "utf8"
+      );
+
+      writeFileSync(
+        join(tsconfigPackageDir, "bun.json"),
+        JSON.stringify(
+          {
+            compilerOptions: {
+              lib: ["ESNext"],
+              target: "ES2020",
+              module: "ESNext",
+              moduleResolution: "Bundler",
+              moduleDetection: "auto",
+              allowJs: true,
+              jsx: "react-jsx",
+              allowImportingTsExtensions: true,
+              rewriteRelativeImportExtensions: true,
+              verbatimModuleSyntax: false,
+              noEmit: false,
+              strict: true,
+              skipLibCheck: true,
+              noFallthroughCasesInSwitch: true,
+              noUncheckedIndexedAccess: true,
+              esModuleInterop: true,
+              forceConsistentCasingInFileNames: true,
+              noUnusedLocals: true,
+              noUnusedParameters: false,
+              noPropertyAccessFromIndexSignature: false,
+              sourceMap: true,
+              declarationMap: true,
+              resolveJsonModule: true,
+              noImplicitOverride: true,
+              noImplicitThis: true,
+            },
+          },
+          null,
+          2
+        ) + "\n",
+        "utf8"
+      );
+
+      writeFileSync(
+        tsconfigPath,
+        JSON.stringify(
+          {
+            extends: `${pkgName}/bun.json`,
+            compilerOptions: {
+              outDir: "./dist",
+            },
+          },
+          null,
+          2
+        ) + "\n",
+        "utf8"
+      );
+
+      const snapshot = runZshyWithTsconfig("tsconfig.json", { dryRun: false, cwd });
+      expect(snapshot).toMatchSnapshot();
+    } finally {
+      writeFileSync(tsconfigPath, originalTsconfig, "utf8");
+
+      if (existsSync(tsconfigPackageDir)) {
+        rmSync(tsconfigPackageDir, { recursive: true, force: true });
+      }
+    }
+  });
+
   it("should find tsconfig.json via zshy.findTsconfig up to the git root", () => {
     const cwd = process.cwd();
     const parent = join(cwd, "tmp-find-tsconfig-parent");
