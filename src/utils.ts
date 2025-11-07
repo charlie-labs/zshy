@@ -82,10 +82,11 @@ export function readTsconfig(tsconfigPath: string) {
   return parsedConfig.options!;
 }
 
-function normalizeExtends(config: any, configDir: string): void {
-  if (!config || config.extends === undefined) return;
+function normalizeExtends(config: Record<string, unknown>, configDir: string): void {
+  if (!config) return;
 
-  const value = config.extends;
+  const value = (config as { extends?: unknown }).extends;
+  if (value === undefined) return;
 
   if (typeof value === "string") {
     const resolved = resolveExtendsSpecifier(value, configDir);
@@ -111,7 +112,7 @@ function normalizeExtends(config: any, configDir: string): void {
     }
 
     if (changed) {
-      config.extends = updated;
+      (config as { extends?: unknown }).extends = updated;
     }
   }
 }
@@ -119,6 +120,8 @@ function normalizeExtends(config: any, configDir: string): void {
 function resolveExtendsSpecifier(specifier: string, configDir: string): string | undefined {
   // Only rewrite bare module specifiers (and subpaths); relative and absolute
   // paths are left untouched for TypeScript to handle.
+  // NOTE: This focuses on explicit subpaths like "pkg/tsconfig.json". It does
+  // not implement full package "exports" resolution for bare specifiers.
   if (specifier.startsWith("./") || specifier.startsWith("../") || path.isAbsolute(specifier)) {
     return undefined;
   }
