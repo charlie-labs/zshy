@@ -28,14 +28,12 @@
     "url": "https://colinhacks.com"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19.0"
   },
   "funding": {
     "type": "github",
     "url": "https://github.com/sponsors/colinhacks"
   },
-  "module": "./dist/index.js",
-  "bin": "./dist/index.cjs",
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
     "@biomejs/biome": "^2.0.5",
@@ -69,18 +67,19 @@
       ".": "./src/index.ts"
     },
     "bin": "./src/index.ts",
+    "cjs": false,
     "conditions": {
       "@zod/source": "src"
     }
   },
-  "main": "./dist/index.cjs",
-  "types": "./dist/index.d.cts",
+  "module": "./dist/index.js",
+  "bin": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "@zod/source": "./src/index.ts",
-      "types": "./dist/index.d.cts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
   "files": [
